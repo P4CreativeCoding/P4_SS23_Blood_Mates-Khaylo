@@ -10,7 +10,7 @@ bool oldDeviceConnected = false;
 uint32_t value = 0;
 const int buttonPin = 14; // the number of the pushbutton pin
 unsigned long buttonPressStartTime = 0;
-const unsigned long minButtonPressDuration = 2000; // Minimum button press duration in milliseconds
+const unsigned long minButtonPressDuration = 200; // Minimum button press duration in milliseconds
 
 #define SERVICE_UUID          "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID    "beb5483e-36e1-4688-b7f5-ea07361b26a8"
