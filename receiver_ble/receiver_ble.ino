@@ -4,14 +4,22 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#include <SPI.h>
+#include <MFRC522.h>
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
+#define SS_PIN 26
+#define RST_PIN 27
+
 #define buttonPin 5
 #define ledPin 13
+#define ledPin_owner 12
 int led_state = LOW;    // the current state of LED
-int button_state;       // the current state of button
+int button_state = LOW;       // the current state of button
 int last_button_state;
+bool reset = false;
 
 static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
 static BLEUUID charUUID("beb5483e-36e1-4688-b7f5-ea07361b26a8");
@@ -21,6 +29,10 @@ BLEAdvertisedDevice* myDevice;
 BLERemoteCharacteristic* pRemoteCharacteristic;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+MFRC522::MIFARE_Key key;
+
 
 class MyClientCallback : public BLEClientCallbacks {
     void onConnect(BLEClient* pclient) {
@@ -63,9 +75,27 @@ void setup() {
     pinMode(buttonPin, INPUT_PULLUP); // set ESP32 pin to input pull-up mode
     pinMode(ledPin, OUTPUT);    
     button_state = digitalRead(buttonPin);
+
+    SPI.begin();
+    mfrc522.PCD_Init();
+    Serial.println("Scan a MIFARE Classic card");
+    pinMode(ledPin_owner, OUTPUT);
+
+    for (byte i = 0; i < 6; i++) {
+      key.keyByte[i] = 0xFF;
+    }
 }
 
 void displayStart() {
+  if (reset == true) {
+    Serial.println("System kann geresetet werden");
+    Serial.println(reset);
+    display.setTextSize(2);
+    display.setCursor(0, 21);
+    display.println("Danke!");
+    // delay(5000);
+    
+  } else if (reset == false) {
     display.clearDisplay();
     display.setTextColor(WHITE);
     display.setTextSize(2);
@@ -74,7 +104,32 @@ void displayStart() {
     display.setTextSize(1);
     display.setCursor(0, 33);
     display.println("Deine Spende wird    dringend gebraucht :(");
-    display.display();
+  }
+  display.display(); // Update the display after the delay
+}
+
+bool checkDonation(byte* blockData, byte blockSize) {
+  char donationString[] = "user has donated";
+  int donationLength = sizeof(donationString) - 1; // Exclude null terminator
+
+  if (blockSize < donationLength) {
+    return false; // Block size is smaller than the donation string
+  }
+
+  for (int i = 0; i <= blockSize - donationLength; i++) {
+    bool match = true;
+    for (int j = 0; j < donationLength; j++) {
+      if (blockData[i + j] != donationString[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) {
+      return true; // Donation string found in the block
+    }
+  }
+
+  return false; // Donation string not found in the block
 }
 
 void loop() {
@@ -109,6 +164,60 @@ void loop() {
     digitalWrite(ledPin, led_state);
 
     delay(100);
+  }
+
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+
+  if (!mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+
+  Serial.println("Card selected");
+
+  byte blockNumber = 2;
+  byte readbackblock[18];
+
+  // Authenticate the block using Key A
+  MFRC522::StatusCode status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockNumber, &key, &(mfrc522.uid));
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print("Authentication failed: ");
+    Serial.println(mfrc522.GetStatusCodeName(status));
+    return;
+  }
+
+  // Read the block
+  byte bufferSize = sizeof(readbackblock);
+  status = mfrc522.MIFARE_Read(blockNumber, readbackblock, &bufferSize);
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print("Read failed: ");
+    Serial.println(mfrc522.GetStatusCodeName(status));
+    return;
+  }
+
+  // Print the block content
+  Serial.print("Block content: ");
+  for (int i = 0; i < bufferSize; i++) {
+    Serial.write(readbackblock[i]);
+  }
+  Serial.println();
+
+  // Check if the donation string is present in the block
+  bool hasDonated = checkDonation(readbackblock, bufferSize);
+  if (hasDonated) {
+    Serial.println("User has donated");
+    digitalWrite(ledPin_owner, HIGH); // Turn on the LED
+  } else {
+    Serial.println("User has not donated");
+    digitalWrite(ledPin_owner, LOW); // Turn off the LED
+  }
+
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
+
+  if (digitalRead(ledPin) == HIGH && digitalRead(ledPin_owner) == HIGH) {
+    reset = true;
   }
 }
 
