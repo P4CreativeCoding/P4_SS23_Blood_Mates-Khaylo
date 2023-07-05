@@ -16,10 +16,12 @@
 #define buttonPin 5
 #define ledPin 13
 #define ledPin_owner 12
+
 int led_state = LOW;    // the current state of LED
 int button_state = LOW;       // the current state of button
 int last_button_state;
 bool reset = false;
+bool donationIsNeeded = false;
 
 static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
 static BLEUUID charUUID("beb5483e-36e1-4688-b7f5-ea07361b26a8");
@@ -87,15 +89,17 @@ void setup() {
 }
 
 void displayStart() {
+
   if (reset == true) {
-    Serial.println("System kann geresetet werden");
-    Serial.println(reset);
-    display.setTextSize(2);
+    Serial.println("reset start");
+    display.clearDisplay();
+    display.setTextSize(3);
     display.setCursor(0, 21);
     display.println("Danke!");
-    // delay(5000);
+    donationIsNeeded = false;
     
-  } else if (reset == false) {
+    
+  } else if (reset == false && donationIsNeeded == true) {
     display.clearDisplay();
     display.setTextColor(WHITE);
     display.setTextSize(2);
@@ -106,6 +110,14 @@ void displayStart() {
     display.println("Deine Spende wird    dringend gebraucht :(");
   }
   display.display(); // Update the display after the delay
+  if (reset) {
+    delay(7000);
+    reset = false;
+    digitalWrite(ledPin_owner, LOW);
+    digitalWrite(ledPin, LOW);
+    // display.clearDisplay();
+   
+  }
 }
 
 bool checkDonation(byte* blockData, byte blockSize) {
@@ -133,6 +145,7 @@ bool checkDonation(byte* blockData, byte blockSize) {
 }
 
 void loop() {
+    
     if (doConnect) {
         BLEClient* pClient = BLEDevice::createClient();
         pClient->setClientCallbacks(new MyClientCallback());
@@ -148,24 +161,35 @@ void loop() {
         Serial.print("Received value: ");
         Serial.println(value);
         if (value == 1) {
+          donationIsNeeded = true;
           displayStart();
         }
     }
     last_button_state = button_state;      // save the last state
     button_state = digitalRead(buttonPin); // read new state
 
-  if (last_button_state == HIGH && button_state == LOW) {
-    Serial.println("The button is pressed");
+    if (last_button_state == HIGH && button_state == LOW) {
+      Serial.println("The button is pressed");  
+      // toggle state of LED
+      led_state = !led_state;
 
-    // toggle state of LED
-    led_state = !led_state;
+      // control LED arccoding to the toggled state
+      digitalWrite(ledPin, led_state);
 
-    // control LED arccoding to the toggled state
-    digitalWrite(ledPin, led_state);
+      delay(100);
+    }     
 
-    delay(100);
-  }
+    Serial.println("LED 1:");
+    Serial.println(digitalRead(ledPin_owner));
+    Serial.println("LED 2:");
+    Serial.println(digitalRead(ledPin));
 
+   if (digitalRead(ledPin) == HIGH && digitalRead(ledPin_owner) == HIGH) {
+      Serial.println("reset was set to true");
+      reset = true;
+      displayStart();
+    }
+    
   if (!mfrc522.PICC_IsNewCardPresent()) {
     return;
   }
@@ -216,8 +240,8 @@ void loop() {
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
 
-  if (digitalRead(ledPin) == HIGH && digitalRead(ledPin_owner) == HIGH) {
-    reset = true;
-  }
+ 
+
+  
 }
 
