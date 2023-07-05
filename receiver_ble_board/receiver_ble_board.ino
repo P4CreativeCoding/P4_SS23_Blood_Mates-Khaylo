@@ -1,28 +1,30 @@
 #include <BLEDevice.h>
 
+// display libraries
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+// RFID-Reader Libraries
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-
+// RFID Pins
 #define SS_PIN 26
 #define RST_PIN 27
 
+// pins
 #define buttonPin 5
 #define ledPin 13
 #define ledPin_owner 12
 
 int led_state = LOW;    // the current state of LED
-int button_state = LOW;       // the current state of button
-int last_button_state;
-bool reset = false;
+int button_state = LOW; // the current state of button
+int last_button_state;  // for saving last button state
+bool reset = false;     // reset condition for completet action
 bool donationIsNeeded = false;
 
+// BLE specifivations
 static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
 static BLEUUID charUUID("beb5483e-36e1-4688-b7f5-ea07361b26a8");
 boolean doConnect = false;
@@ -30,8 +32,12 @@ boolean connected = false;
 BLEAdvertisedDevice* myDevice;
 BLERemoteCharacteristic* pRemoteCharacteristic;
 
+// display specifications
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
+// RFID specifications
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 MFRC522::MIFARE_Key key;
 
@@ -61,6 +67,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 void setup() {
     Serial.begin(115200);
     Serial.println("Starting Arduino BLE Client application...");
+
+    // BLE initialisation
     BLEDevice::init("");
     BLEScan* pBLEScan = BLEDevice::getScan();
     pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
@@ -69,6 +77,7 @@ void setup() {
     pBLEScan->setActiveScan(true);
     pBLEScan->start(5, false);
 
+    // display initialisation
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
     display.clearDisplay();
     delay(1000);
@@ -78,9 +87,11 @@ void setup() {
     pinMode(ledPin, OUTPUT);    
     button_state = digitalRead(buttonPin);
 
+    // initialise RFID reader
     SPI.begin();
     mfrc522.PCD_Init();
     Serial.println("Scan a MIFARE Classic card");
+
     pinMode(ledPin_owner, OUTPUT);
 
     for (byte i = 0; i < 6; i++) {
@@ -91,15 +102,17 @@ void setup() {
 void displayStart() {
 
   if (reset == true) {
+    // display this message if all participants have confirmed donation
     Serial.println("reset start");
     display.clearDisplay();
     display.setTextSize(3);
     display.setCursor(0, 21);
-    display.println("Danke!");
+    display.println("Danke!"); 
     donationIsNeeded = false;
     
     
   } else if (reset == false && donationIsNeeded == true) {
+    // display this message if donations are needed
     display.clearDisplay();
     display.setTextColor(WHITE);
     display.setTextSize(2);
@@ -109,8 +122,11 @@ void displayStart() {
     display.setCursor(0, 33);
     display.println("Deine Spende wird    dringend gebraucht :(");
   }
-  display.display(); // Update the display after the delay
+
+  display.display(); // Update the display with current data
+
   if (reset) {
+    // reset everything after delay
     delay(7000);
     reset = false;
     digitalWrite(ledPin_owner, LOW);
@@ -121,6 +137,7 @@ void displayStart() {
 }
 
 bool checkDonation(byte* blockData, byte blockSize) {
+  // read data
   char donationString[] = "user has donated";
   int donationLength = sizeof(donationString) - 1; // Exclude null terminator
 
@@ -131,7 +148,7 @@ bool checkDonation(byte* blockData, byte blockSize) {
   for (int i = 0; i <= blockSize - donationLength; i++) {
     bool match = true;
     for (int j = 0; j < donationLength; j++) {
-      if (blockData[i + j] != donationString[j]) {
+      if (blockData[i + j] != donationString[j]) { // if user has not donated
         match = false;
         break;
       }
@@ -145,7 +162,7 @@ bool checkDonation(byte* blockData, byte blockSize) {
 }
 
 void loop() {
-    
+    // BLE connection
     if (doConnect) {
         BLEClient* pClient = BLEDevice::createClient();
         pClient->setClientCallbacks(new MyClientCallback());
@@ -157,24 +174,24 @@ void loop() {
     }
 
     if (connected) {
-        uint32_t value = pRemoteCharacteristic->readUInt32();
+        uint32_t value = pRemoteCharacteristic->readUInt32(); // read received value
         Serial.print("Received value: ");
         Serial.println(value);
         if (value == 1) {
-          donationIsNeeded = true;
-          displayStart();
+          donationIsNeeded = true; // change donation state
+          displayStart(); // activate display
         }
     }
+
     last_button_state = button_state;      // save the last state
     button_state = digitalRead(buttonPin); // read new state
 
-    if (last_button_state == HIGH && button_state == LOW) {
+    if (last_button_state == HIGH && button_state == LOW) { // check if button state has changed from high to low
       Serial.println("The button is pressed");  
-      // toggle state of LED
-      led_state = !led_state;
 
-      // control LED arccoding to the toggled state
-      digitalWrite(ledPin, led_state);
+      led_state = !led_state; // toggle state of LED
+
+      digitalWrite(ledPin, led_state); // control LED arccoding to the toggled state
 
       delay(100);
     }     
@@ -184,7 +201,7 @@ void loop() {
     Serial.println("LED 2:");
     Serial.println(digitalRead(ledPin));
 
-   if (digitalRead(ledPin) == HIGH && digitalRead(ledPin_owner) == HIGH) {
+   if (digitalRead(ledPin) == HIGH && digitalRead(ledPin_owner) == HIGH) { // if both LEDs on -> both users have donated
       Serial.println("reset was set to true");
       reset = true;
       displayStart();
@@ -200,6 +217,7 @@ void loop() {
 
   Serial.println("Card selected");
 
+  // for decoding
   byte blockNumber = 2;
   byte readbackblock[18];
 
@@ -239,9 +257,6 @@ void loop() {
 
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
-
- 
-
   
 }
 

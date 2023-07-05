@@ -1,15 +1,18 @@
+// BLE Libraries
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
+// BLE specifications
 BLEServer* pServer = NULL;
 BLECharacteristic* pCharacteristic = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
+
 uint32_t value = 0;
 const int buttonPin = 14; // the number of the pushbutton pin
-unsigned long buttonPressStartTime = 0;
+unsigned long buttonPressStartTime = 0; // for button timer
 const unsigned long minButtonPressDuration = 200; // Minimum button press duration in milliseconds
 
 #define SERVICE_UUID          "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -69,6 +72,7 @@ void loop() {
 
         // Check if the button has been pressed for the minimum duration
         if (buttonPressStartTime != 0 && millis() - buttonPressStartTime >= minButtonPressDuration) {
+            // send buttonState to connected device
             pCharacteristic->setValue(buttonState);
             pCharacteristic->notify();
             Serial.println(buttonState);
